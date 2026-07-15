@@ -1,5 +1,6 @@
 package com.eventledger.gateway.config;
 
+import io.micrometer.observation.ObservationRegistry;
 import org.springframework.boot.web.client.RestClientCustomizer;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -14,13 +15,15 @@ public class RestClientConfig {
     @Bean
     public RestClientCustomizer restClientCustomizer(
             @Value("${account-service.connect-timeout}") Duration connectTimeout,
-            @Value("${account-service.read-timeout}") Duration readTimeout
+            @Value("${account-service.read-timeout}") Duration readTimeout,
+            ObservationRegistry observationRegistry
     ) {
         return restClientBuilder -> {
             SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
             requestFactory.setConnectTimeout((int) connectTimeout.toMillis());
             requestFactory.setReadTimeout((int) readTimeout.toMillis());
             restClientBuilder.requestFactory(requestFactory);
+            restClientBuilder.observationRegistry(observationRegistry);
         };
     }
 }

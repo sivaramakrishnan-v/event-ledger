@@ -1,0 +1,34 @@
+version: '3.8'
+
+services:
+  account-service:
+    build:
+      context: .
+      dockerfile: account-service/Dockerfile
+    ports:
+      - "8081:8081"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - event-ledger-net
+
+  event-gateway-service:
+    build:
+      context: .
+      dockerfile: event-gateway-service/Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      - ACCOUNT_SERVICE_BASE_URL=http://account-service:8081
+    depends_on:
+      account-service:
+        condition: service_healthy
+    networks:
+      - event-ledger-net
+
+networks:
+  event-ledger-net:
+    driver: bridge

@@ -1,5 +1,6 @@
 package com.eventledger.gateway.exception;
 
+import com.eventledger.gateway.metrics.EventMetrics;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -17,11 +18,18 @@ import java.util.stream.Collectors;
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
+    private final EventMetrics eventMetrics;
+
+    public GlobalExceptionHandler(EventMetrics eventMetrics) {
+        this.eventMetrics = eventMetrics;
+    }
+
     @ExceptionHandler(AccountServiceUnavailableException.class)
     public ResponseEntity<Map<String, Object>> handleAccountServiceUnavailable(
             AccountServiceUnavailableException exception,
             HttpServletRequest request
     ) {
+        recordPostEventMetric(request, "account_service_unavailable");
         return errorResponse(HttpStatus.SERVICE_UNAVAILABLE, exception.getMessage(), request);
     }
 
@@ -30,6 +38,7 @@ public class GlobalExceptionHandler {
             EventConflictException exception,
             HttpServletRequest request
     ) {
+        recordPostEventMetric(request, "duplicate");
         return errorResponse(HttpStatus.CONFLICT, exception.getMessage(), request);
     }
 
@@ -46,6 +55,7 @@ public class GlobalExceptionHandler {
             MethodArgumentNotValidException exception,
             HttpServletRequest request
     ) {
+        recordPostEventMetric(request, "validation_error");
         String message = exception.getBindingResult()
                 .getFieldErrors()
                 .stream()
@@ -60,6 +70,7 @@ public class GlobalExceptionHandler {
             RestClientResponseException exception,
             HttpServletRequest request
     ) {
+        recordPostEventMetric(request, "account_service_unavailable");
         HttpStatus status = HttpStatus.resolve(exception.getStatusCode().value());
         if (status == null) {
             status = HttpStatus.BAD_GATEWAY;
@@ -81,5 +92,11 @@ public class GlobalExceptionHandler {
         response.put("path", request.getRequestURI());
 
         return ResponseEntity.status(status).body(response);
+    }
+
+    private void recordPostEventMetric(HttpServletRequest request, String result) {
+        if ("POST".equals(request.getMethod()) && "/events".equals(request.getRequestURI())) {
+            eventMetrics.recordEventReceived(result);
+        }
     }
 }

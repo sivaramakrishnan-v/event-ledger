@@ -6,6 +6,8 @@ import com.eventledger.account.dto.BalanceResponse;
 import com.eventledger.account.dto.TransactionResponse;
 import com.eventledger.account.service.AccountService;
 import jakarta.validation.Valid;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -18,6 +20,8 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/accounts")
 public class AccountController {
 
+    private static final Logger logger = LoggerFactory.getLogger(AccountController.class);
+
     private final AccountService accountService;
 
     public AccountController(AccountService accountService) {
@@ -29,7 +33,9 @@ public class AccountController {
             @PathVariable String accountId,
             @Valid @RequestBody AccountTransactionRequest request
     ) {
-        return ResponseEntity.ok(accountService.applyTransaction(accountId, request));
+        TransactionResponse response = accountService.applyTransaction(accountId, request);
+        logger.info("Account transaction applied");
+        return ResponseEntity.ok(response);
     }
 
     @GetMapping("/{accountId}/balance")

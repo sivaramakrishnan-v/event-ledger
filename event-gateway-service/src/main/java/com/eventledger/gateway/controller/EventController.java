@@ -2,9 +2,12 @@ package com.eventledger.gateway.controller;
 
 import com.eventledger.gateway.dto.EventRequest;
 import com.eventledger.gateway.dto.EventResponse;
+import com.eventledger.gateway.metrics.EventMetrics;
 import com.eventledger.gateway.service.EventService;
 import com.eventledger.gateway.service.EventSubmissionResult;
 import jakarta.validation.Valid;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -15,10 +18,14 @@ import java.util.List;
 @RequestMapping("/events")
 public class EventController {
 
-    private final EventService eventService;
+    private static final Logger logger = LoggerFactory.getLogger(EventController.class);
 
-    public EventController(EventService eventService) {
+    private final EventService eventService;
+    private final EventMetrics eventMetrics;
+
+    public EventController(EventService eventService, EventMetrics eventMetrics) {
         this.eventService = eventService;
+        this.eventMetrics = eventMetrics;
     }
 
     @PostMapping
@@ -26,6 +33,11 @@ public class EventController {
             @Valid @RequestBody EventRequest request
     ) {
         EventSubmissionResult result = eventService.submitEvent(request);
+        String metricResult = result.created() ? "success" : "duplicate";
+        eventMetrics.recordEventReceived(metricResult);
+        logger.atInfo()
+                .addKeyValue("result", metricResult)
+                .log("Event submission completed");
         HttpStatus status = result.created() ? HttpStatus.CREATED : HttpStatus.OK;
         return ResponseEntity.status(status).body(result.event());
     }
