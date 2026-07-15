@@ -3,7 +3,9 @@ package com.eventledger.gateway.controller;
 import com.eventledger.gateway.dto.EventRequest;
 import com.eventledger.gateway.dto.EventResponse;
 import com.eventledger.gateway.service.EventService;
+import com.eventledger.gateway.service.EventSubmissionResult;
 import jakarta.validation.Valid;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -23,8 +25,9 @@ public class EventController {
     public ResponseEntity<EventResponse> submitEvent(
             @Valid @RequestBody EventRequest request
     ) {
-        EventResponse response = eventService.submitEvent(request);
-        return ResponseEntity.ok(response);
+        EventSubmissionResult result = eventService.submitEvent(request);
+        HttpStatus status = result.created() ? HttpStatus.CREATED : HttpStatus.OK;
+        return ResponseEntity.status(status).body(result.event());
     }
 
     @GetMapping("/{id}")

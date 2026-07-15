@@ -33,13 +33,13 @@ public class EventService {
         this.accountServiceClient = accountServiceClient;
     }
 
-    public EventResponse submitEvent(EventRequest request) {
+    public EventSubmissionResult submitEvent(EventRequest request) {
         Optional<EventEntity> existingEvent = eventRepository.findByEventId(request.eventId());
 
         if (existingEvent.isPresent()) {
             EventEntity entity = existingEvent.get();
             if (matchesExistingEvent(entity, request)) {
-                return eventMapper.toResponse(entity);
+                return new EventSubmissionResult(eventMapper.toResponse(entity), false);
             }
             throw new EventConflictException(
                     "Event ID already exists with different event data: "
@@ -60,7 +60,7 @@ public class EventService {
         EventEntity newEventEntity = eventMapper.toEntity(request);
         EventEntity savedEntity = eventRepository.save(newEventEntity);
 
-        return eventMapper.toResponse(savedEntity);
+        return new EventSubmissionResult(eventMapper.toResponse(savedEntity), true);
     }
 
     private boolean matchesExistingEvent(
