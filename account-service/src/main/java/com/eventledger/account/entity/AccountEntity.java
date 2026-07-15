@@ -59,6 +59,10 @@ public class AccountEntity {
         balance = balance.subtract(amount);
     }
 
+    public void updateBalance(BigDecimal balance) {
+        this.balance = balance;
+    }
+
     public Long getId() {
         return id;
     }

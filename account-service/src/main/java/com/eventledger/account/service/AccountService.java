@@ -13,6 +13,7 @@ import com.eventledger.account.repository.TransactionRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.Objects;
@@ -59,19 +60,12 @@ public class AccountService {
             throw new AccountConflictException("Currency mismatch for account: " + accountId);
         }
 
-        switch (request.type()) {
-            case CREDIT:
-                account.credit(request.amount());
-                break;
-            case DEBIT:
-                account.debit(request.amount());
-                break;
-        }
-
         accountRepository.save(account);
 
         TransactionEntity transactionEntity = accountMapper.toTransactionEntity(accountId, request);
         TransactionEntity savedTransaction = transactionRepository.save(transactionEntity);
+        account.updateBalance(calculateChronologicalBalance(accountId));
+        accountRepository.save(account);
 
         return accountMapper.toTransactionResponse(savedTransaction);
     }
@@ -89,6 +83,19 @@ public class AccountService {
         List<TransactionEntity> transactions = transactionRepository.findByAccountIdOrderByEventTimestampAsc(accountId);
 
         return accountMapper.toAccountResponse(account, transactions);
+    }
+
+    private BigDecimal calculateChronologicalBalance(String accountId) {
+        BigDecimal balance = BigDecimal.ZERO;
+
+        for (TransactionEntity transaction : transactionRepository.findByAccountIdOrderByEventTimestampAsc(accountId)) {
+            balance = switch (transaction.getType()) {
+                case CREDIT -> balance.add(transaction.getAmount());
+                case DEBIT -> balance.subtract(transaction.getAmount());
+            };
+        }
+
+        return balance;
     }
 
     private boolean matchesExistingTransaction(
