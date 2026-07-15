@@ -40,6 +40,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class EventGatewayObservabilityTests {
 
     private static final BlockingQueue<String> TRACEPARENT_HEADERS = new LinkedBlockingQueue<>();
+    private static final BlockingQueue<String> REQUEST_BODIES = new LinkedBlockingQueue<>();
     private static final HttpServer ACCOUNT_SERVICE = startAccountService();
 
     @Autowired
@@ -73,6 +74,7 @@ class EventGatewayObservabilityTests {
     @BeforeEach
     void resetCapturedHeaders() {
         TRACEPARENT_HEADERS.clear();
+        REQUEST_BODIES.clear();
     }
 
     @Test
@@ -111,6 +113,13 @@ class EventGatewayObservabilityTests {
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
         assertThat(response.getBody()).contains("\"eventId\":\"evt-trace\"");
+        assertThat(REQUEST_BODIES)
+                .singleElement()
+                .asString()
+                .contains("\"eventId\":\"evt-trace\"")
+                .contains("\"type\":\"CREDIT\"")
+                .contains("\"amount\":150.00")
+                .contains("\"currency\":\"USD\"");
 
         assertThat(TRACEPARENT_HEADERS)
                 .singleElement()
@@ -131,6 +140,7 @@ class EventGatewayObservabilityTests {
     private static void handleTransaction(HttpExchange exchange) throws IOException {
         String traceparent = exchange.getRequestHeaders().getFirst("traceparent");
         TRACEPARENT_HEADERS.add(traceparent == null ? "" : traceparent);
+        REQUEST_BODIES.add(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
         byte[] response = "{}".getBytes(StandardCharsets.UTF_8);
         exchange.getResponseHeaders().add("Content-Type", "application/json");
         exchange.sendResponseHeaders(200, response.length);

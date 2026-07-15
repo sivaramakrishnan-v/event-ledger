@@ -6,6 +6,8 @@ import com.eventledger.gateway.entity.EventEntity;
 import com.eventledger.gateway.entity.EventType;
 import com.eventledger.gateway.exception.AccountServiceUnavailableException;
 import com.eventledger.gateway.repository.EventRepository;
+import io.github.resilience4j.circuitbreaker.CircuitBreaker;
+import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.BeforeEach;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -17,6 +19,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.math.BigDecimal;
 import java.time.Instant;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -27,7 +30,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest(properties = {
         "account-service.base-url=http://localhost:1",
         "account-service.connect-timeout=100ms",
-        "account-service.read-timeout=100ms"
+        "account-service.read-timeout=100ms",
+        "resilience4j.circuitbreaker.instances.accountService.sliding-window-size=2",
+        "resilience4j.circuitbreaker.instances.accountService.minimum-number-of-calls=2",
+        "resilience4j.circuitbreaker.instances.accountService.failure-rate-threshold=50",
+        "resilience4j.circuitbreaker.instances.accountService.wait-duration-in-open-state=30s"
 })
 @AutoConfigureMockMvc
 class EventGatewayServiceApplicationTests {
@@ -41,9 +48,13 @@ class EventGatewayServiceApplicationTests {
     @Autowired
     private AccountServiceClient accountServiceClient;
 
+    @Autowired
+    private CircuitBreakerRegistry circuitBreakerRegistry;
+
     @BeforeEach
     void resetDatabase() {
         eventRepository.deleteAll();
+        circuitBreakerRegistry.circuitBreaker("accountService").reset();
     }
 
     @Test
@@ -68,7 +79,45 @@ class EventGatewayServiceApplicationTests {
                                 }
                                 """))
                 .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.status").value(503))
+                .andExpect(jsonPath("$.error").value("Service Unavailable"))
                 .andExpect(jsonPath("$.message").value("Account service is unavailable"));
+    }
+
+    @Test
+    void accountServiceFailuresOpenCircuitBreakerAndReturnServiceUnavailable() throws Exception {
+        submitEventExpectingServiceUnavailable("evt-circuit-1");
+        submitEventExpectingServiceUnavailable("evt-circuit-2");
+
+        CircuitBreaker circuitBreaker = circuitBreakerRegistry.circuitBreaker("accountService");
+        assertThat(circuitBreaker.getState())
+                .isEqualTo(CircuitBreaker.State.OPEN);
+
+        submitEventExpectingServiceUnavailable("evt-circuit-open");
+
+        assertThat(eventRepository.findByEventId("evt-circuit-open"))
+                .isEmpty();
+    }
+
+    @Test
+    void invalidEventPayloadReturnsBadRequestAndDoesNotPersistEvent() throws Exception {
+        mockMvc.perform(post("/events")
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "eventId": "",
+                                  "accountId": "acct-validation",
+                                  "type": "CREDIT",
+                                  "amount": 0,
+                                  "currency": "US",
+                                  "eventTimestamp": "2026-05-15T14:02:11Z"
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.message").isNotEmpty());
+
+        assertThat(eventRepository.count()).isZero();
     }
 
     @Test
@@ -154,5 +203,26 @@ class EventGatewayServiceApplicationTests {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.eventId").value("evt-duplicate"))
                 .andExpect(content().contentTypeCompatibleWith("application/json"));
+    }
+
+    private void submitEventExpectingServiceUnavailable(String eventId) throws Exception {
+        mockMvc.perform(post("/events")
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "eventId": "%s",
+                                  "accountId": "acct-circuit",
+                                  "type": "CREDIT",
+                                  "amount": 150.00,
+                                  "currency": "USD",
+                                  "eventTimestamp": "2026-05-15T14:02:11Z",
+                                  "metadata": {
+                                    "source": "test"
+                                  }
+                                }
+                                """.formatted(eventId)))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.status").value(503))
+                .andExpect(jsonPath("$.message").value("Account service is unavailable"));
     }
 }

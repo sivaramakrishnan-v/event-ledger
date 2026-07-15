@@ -1,5 +1,5 @@
 # Build stage
-FROM maven:3.8.5-openjdk-17 AS build
+FROM maven:3.9.9-eclipse-temurin-17 AS build
 WORKDIR /app
 COPY pom.xml .
 COPY account-service/pom.xml ./account-service/
@@ -8,8 +8,8 @@ COPY . .
 RUN mvn -f pom.xml clean package
 
 # Package stage
-FROM openjdk:17-jdk-slim
-RUN apt-get update && apt-get install -y curl
+FROM eclipse-temurin:17-jre-jammy
+RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY --from=build /app/account-service/target/account-service-0.0.1-SNAPSHOT.jar /app/app.jar
 EXPOSE 8081
