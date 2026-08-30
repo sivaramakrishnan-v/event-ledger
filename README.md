@@ -393,3 +393,6 @@ docker compose down
 # Show Docker logs
 docker compose logs -f
 ```
+This section was added to practice branching, pull requests, and merging.
+
+This section was added to practice branching, pull requests, and merging.
