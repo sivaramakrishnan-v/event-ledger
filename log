@@ -1,0 +1,81 @@
+
+import { trace, SpanStatusCode } from "@opentelemetry/api";
+import { LDObserve } from "@launchdarkly/observability-node";
+
+const tracer = trace.getTracer("mcp-server");
+
+// Common wrapper for instrumenting operations
+async function tracedOperation<T>(
+  operationName: string,
+  correlationId: string,
+  operation: () => Promise<T>
+): Promise<T> {
+  return tracer.startActiveSpan(operationName, async (span) => {
+    span.setAttribute("correlation.id", correlationId);
+
+    const { traceId, spanId } = span.spanContext();
+
+    console.log({
+      operation: operationName,
+      correlationId,
+      traceId,
+      spanId
+    });
+
+    try {
+      LDObserve.recordLog(
+        `${operationName} started`,
+        "info",
+        undefined,
+        undefined,
+        { "correlation.id": correlationId }
+      );
+
+      return await operation();
+    } catch (error) {
+      span.recordException(error as Error);
+      span.setStatus({ code: SpanStatusCode.ERROR });
+      throw error;
+    } finally {
+      span.end();
+    }
+  });
+}
+
+// Your actual MCP Tool1 handler
+async function tool1(correlationId: string) {
+  return tracedOperation("mcp.tool1", correlationId, async () => {
+
+    const jiraData = await tracedOperation(
+      "jira.fetch",
+      correlationId,
+      async () => {
+        // Replace with actual Jira API call
+        return { issueKey: "PROJ-123" };
+      }
+    );
+
+    const attachments = await tracedOperation(
+      "jira.downloadAttachments",
+      correlationId,
+      async () => {
+        // Replace with actual attachment download
+        return ["requirements.pdf"];
+      }
+    );
+
+    const contextData = await tracedOperation(
+      "context.generate",
+      correlationId,
+      async () => {
+        // Replace with actual context generation
+        return { jiraData, attachments };
+      }
+    );
+
+    return contextData;
+  });
+}
+
+// Called by your MCP tool registration handler
+// await tool1(args.correlationId);
